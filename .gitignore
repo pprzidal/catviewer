@@ -4,4 +4,3 @@ node_modules
 hist
 test.js
 .html/users.json
-package-lock.json
