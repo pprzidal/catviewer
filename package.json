@@ -1,0 +1,28 @@
+{
+  "name": "catviewerapp",
+  "version": "1.0.0",
+  "description": "An App to view Images made by a Raspi Cam in the Browser",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "devStart": "nodemon index.js"
+  },
+  "author": "pprzidal",
+  "license": "ISC",
+  "dependencies": {
+    "bcrypt": "^5.0.1",
+    "express": "^4.17.1",
+    "express-rate-limit": "^5.3.0",
+    "express-session": "^1.17.2",
+    "fs": "^0.0.1-security",
+    "helmet": "^4.6.0",
+    "http": "^0.0.1-security",
+    "https": "^1.0.0",
+    "raspberry-pi-camera-native": "^0.0.0",
+    "speakeasy": "^2.0.0",
+    "websocket": "^1.0.34"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.12"
+  }
+}
