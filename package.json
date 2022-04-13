@@ -11,6 +11,7 @@
   "license": "ISC",
   "dependencies": {
     "bcrypt": "^5.0.1",
+    "dotenv": "^16.0.0",
     "express": "^4.17.1",
     "express-rate-limit": "^5.3.0",
     "express-session": "^1.17.2",
@@ -18,11 +19,13 @@
     "helmet": "^4.6.0",
     "http": "^0.0.1-security",
     "https": "^1.0.0",
+    "pi-camera-native-ts": "^0.0.9",
     "raspberry-pi-camera-native": "^0.0.0",
     "speakeasy": "^2.0.0",
     "websocket": "^1.0.34"
   },
   "devDependencies": {
-    "nodemon": "^2.0.12"
+    "nodemon": "^2.0.12",
+    "sqlite": "^4.0.23"
   }
 }

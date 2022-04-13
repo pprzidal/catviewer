@@ -1,6 +1,10 @@
-.certs/*
-.log/*
+.certs/
+.log/
 node_modules
 hist
 test.js
 .html/users.json
+sqllitetry.js
+tmp/
+.env
+users.json

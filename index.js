@@ -4,13 +4,17 @@ const https = require('https');
 const express = require("express");
 const app = express();
 const WebSocketServer = require('websocket').server;
-const raspberryPiCamera = require('raspberry-pi-camera-native');
+//const raspberryPiCamera = require('raspberry-pi-camera-native');
+const raspberryPiCamera = require('pi-camera-native-ts');
 const helmet = require('helmet');
 const bcrypt = require('bcrypt');
 //const qrcode = require('qrcode');
 const speakeasy = require('speakeasy');
 const rateLimit = require("express-rate-limit");
-const session = require('express-session')
+const session = require('express-session');
+require('dotenv').config();
+
+console.log(process.env.PORT);
 
 //TODO: debug mmal: mmal_port_send_buffer: vc.ril.image_encode:out:0(JPEG): send failed: ENOMEM
 //            mmal: mmal_port_send_buffer: vc.ril.image_encode:out:0(JPEG): send failed: ENOMEM
@@ -30,12 +34,12 @@ app.use(session({
 
 //TODO: email zum Funktionieren bringen (vllt. nicht notwendig)
 //TODO: magenta anhauen das sie ipv4 am router freischalten
-const privateKey  = fs.readFileSync(__dirname + '/.certs/key.pem', 'utf8');
-const certificate = fs.readFileSync(__dirname + '/.certs/cert.pem', 'utf8'); 
+const privateKey  = fs.readFileSync(process.env.PRIVATE_KEY, 'utf8');
+const certificate = fs.readFileSync(process.env.CERTIFICATE, 'utf8'); 
 
 // OS ist Linux => '/' als "Pfad trenner". für OS unabhängigkeit sollte das package path verwendet werden
-const users = JSON.parse(fs.readFileSync(__dirname + '/.html/users.json', 'utf8'))
-
+const users = JSON.parse(fs.readFileSync(process.env.USERS, 'utf8'));
+console.log(users);
 /*var secret = speakeasy.generateSecret({
     length: 60,
     name: "CatViewerApp"
@@ -55,7 +59,7 @@ sessions = [];
 const camConfig = {
     width: 640,
     height: 480,
-    fps: 30,
+    fps: 1,
     encoding: 'JPEG',
     quality: 10,
     hf: false,
@@ -135,6 +139,7 @@ function checkAuth(req, res, next) {
 app.use(express.urlencoded({extended: true}));
 
 app.get('/', (req, res) => {
+    console.log('got a request');
 	res.sendFile(__dirname + "/.html/index.html");
 })
 
@@ -158,7 +163,7 @@ app.post("/totp", limiter, (req, res) => {
     if(req.body.totp === undefined) res.redirect("/");
     //if(!req.session.uid) res.redirect("/");
     var tokenValidates = speakeasy.totp.verify({
-        secret: users.users[0].totpkey, //TODO: super insecure. besser machen
+        secret: users[0].totpkey, //TODO: super insecure. besser machen
         encoding: 'ascii',
         token: req.body.totp,
         window: 1
@@ -179,7 +184,7 @@ app.post("/totp", limiter, (req, res) => {
 
 app.post('/login', limiter, async (req, res) => {
     let user = null
-    users.users.forEach(element => {
+    users.forEach(element => {
         if(element.lname === req.body.login) {
             user = element
         }
