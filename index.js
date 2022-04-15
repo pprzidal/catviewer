@@ -1,18 +1,26 @@
-const fs = require('fs');
-const http = require('http'); //TODO vllt. gar nicht http anbieten
-const https = require('https');
-const express = require("express");
+import * as fs from 'fs';
+import * as http from 'http'; //TODO vllt. gar nicht http anbieten
+import * as https from 'https';
+import express from 'express';
+//const express = require("express");
 const app = express();
-const WebSocketServer = require('websocket').server;
+import { WebSocketServer } from 'ws';
+//import { server as WebSocketServer } from 'websocket';
+//const WebSocketServer = server;
 //const raspberryPiCamera = require('raspberry-pi-camera-native');
-const raspberryPiCamera = require('pi-camera-native-ts');
-const helmet = require('helmet');
-const bcrypt = require('bcrypt');
+import raspberryPiCamera from 'pi-camera-native-ts';
+import helmet from 'helmet';
+import * as bcrypt from 'bcrypt';
 //const qrcode = require('qrcode');
-const speakeasy = require('speakeasy');
-const rateLimit = require("express-rate-limit");
-const session = require('express-session');
-require('dotenv').config();
+import {totp} from 'speakeasy';
+import rateLimit from "express-rate-limit";
+import session from 'express-session';
+import * as dotenv from 'dotenv';
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+dotenv.config();
 
 console.log(process.env.PORT);
 
@@ -27,7 +35,7 @@ const limiter = rateLimit({
 const logFile = __dirname + "/.log/log.log";
 
 app.use(session({
-    secret: 'keyboard cat',
+    secret: process.env.SECRET,
     resave: false,
     saveUninitialized: true
   }))
@@ -54,7 +62,7 @@ qrcode.toDataURL(secret.otpauth_url, function(err, data_url) {
     console.log('<img src="' + data_url + '">');
   });*/
 
-sessions = [];
+//sessions = [];
 
 const camConfig = {
     width: 640,
@@ -62,8 +70,7 @@ const camConfig = {
     fps: 1,
     encoding: 'JPEG',
     quality: 10,
-    hf: false,
-    vf: true
+    mirror: raspberryPiCamera.Mirror.BOTH,
   };
 
 //TODO: .png s nicht als base64 string schicken sondern als BLOB
@@ -72,25 +79,22 @@ const camConfig = {
 app.use(helmet.hidePoweredBy());
 app.use(helmet.xssFilter());
 app.use(helmet.noSniff());
-//app.use(helmet());
-/*app.use(helmet.contentSecurityPolicy({
-    connectSrc: ["echo-protocol", "ws://192.168.0.3:3444/"],
-    scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-    styleSrc: ["'self'", "'unsafe-inline'"]
-}))*/
 
 const httpServer = http.createServer(app);
-const web = http.createServer();
 const httpsServer = https.createServer({key: privateKey, cert: certificate}, app);
 
+/*httpServer.on('request', app);
+httpsServer.on('request', app);*/
+
 const wsServer = new WebSocketServer({
-    httpServer: web,
+    //httpServer: web,
+    server: httpsServer,
     autoAcceptConnections: false
 });
 
 var connection = null;
 
-wsServer.on('request', async function(request) {
+wsServer.on('connection', async function(request) {
     connection = request.accept('echo-protocol', request.origin);
     fs.appendFile(logFile, `${new Date()}:' Connection accepted.`, err => {if(err) {return}});
     raspberryPiCamera.start(camConfig);
@@ -120,6 +124,10 @@ wsServer.on('request', async function(request) {
 });
 
 raspberryPiCamera.on('frame', (frameData) => {
+    //console.log(typeof frameData);
+    console.log('length of this frameData', frameData.length);
+    console.log('bytelength of buffer encoded as base64', Buffer.byteLength(frameData, 'base64'));
+    console.log('like its send', frameData.toString('base64').length);
     try {
         connection.sendUTF(frameData.toString('base64'));
     } catch(err) {
@@ -162,7 +170,7 @@ app.post("/totp", limiter, (req, res) => {
     console.log(req.body.totp);
     if(req.body.totp === undefined) res.redirect("/");
     //if(!req.session.uid) res.redirect("/");
-    var tokenValidates = speakeasy.totp.verify({
+    const tokenValidates = totp.verify({
         secret: users[0].totpkey, //TODO: super insecure. besser machen
         encoding: 'ascii',
         token: req.body.totp,
@@ -170,7 +178,7 @@ app.post("/totp", limiter, (req, res) => {
       });
     if (tokenValidates === true) {
         try{
-            web.listen(3444); // TODO: eine art heartbeat der detektet ob noch wer am anderen Ende ist.
+            //web.listen(3444); // TODO: eine art heartbeat der detektet ob noch wer am anderen Ende ist.
         } catch(err) {
             console.log(err);
         }
@@ -183,17 +191,10 @@ app.post("/totp", limiter, (req, res) => {
 })
 
 app.post('/login', limiter, async (req, res) => {
-    let user = null
-    users.forEach(element => {
-        if(element.lname === req.body.login) {
-            user = element
-        }
-    });
-    if(user === null) {
+    const user = users.find(user => user.lname === req.body.login);
+    if(!user) {
         fs.appendFile(logFile, `${new Date()}: Failed Auth from ${req.ip}\n`, err => {if(err) {return}});
-        res.write("No user found")
-        res.end()
-        return;
+        res.status(400).send({"error": "No user found"});
     } else {
         try {
             if(await bcrypt.compare(req.body.pass, user.pwd)) {
@@ -203,11 +204,11 @@ app.post('/login', limiter, async (req, res) => {
                 //res.redirect("/totp")
                 res.sendFile(__dirname + "/.html/totp.html");
             }
-        } catch {
-            res.write("Something went wrong")
+        } catch(err) {
+            res.status(500).send({"error": "Something went wrong"});
         }
     }
 });
 
-httpServer.listen(3000);
-httpsServer.listen(3443);
+httpServer.listen(process.env.PORT);
+httpsServer.listen(process.env.PORT_SECURE);

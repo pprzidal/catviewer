@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "An App to view Images made by a Raspi Cam in the Browser",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "start": "node index.js",
     "devStart": "nodemon index.js"
@@ -22,10 +23,12 @@
     "pi-camera-native-ts": "^0.0.9",
     "raspberry-pi-camera-native": "^0.0.0",
     "speakeasy": "^2.0.0",
-    "websocket": "^1.0.34"
+    "websocket": "^1.0.34",
+    "winston": "^3.7.2",
+    "ws": "^8.5.0"
   },
   "devDependencies": {
-    "nodemon": "^2.0.12",
+    "nodemon": "^2.0.15",
     "sqlite": "^4.0.23"
   }
 }

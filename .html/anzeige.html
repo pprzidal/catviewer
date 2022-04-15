@@ -15,7 +15,14 @@
       <a href="/logout"><button>Logout</button></a></center> <!-- TODO: place this button better -->
     <script>
       const image = document.getElementById('image');
-      const connection = new WebSocket("ws://192.168.0.3:3444", "echo-protocol");
+      const ipAndPort = location.host.split(':');
+      console.log(ipAndPort);
+      const url = `wss://${location.host}`;
+      try {
+        const connection = new WebSocket(url, "echo-protocol");
+      } catch(err) {
+        console.error(err);
+      }
       const inputField = document.getElementById('framerate');
       const button = document.getElementById('bla');
       connection.onopen = function(event) {
