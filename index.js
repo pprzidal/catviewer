@@ -16,11 +16,19 @@ import {totp} from 'speakeasy';
 import rateLimit from "express-rate-limit";
 import session from 'express-session';
 import * as dotenv from 'dotenv';
+import { promisify } from 'util';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-dotenv.config();
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+//const __dirname = dirname(fileURLToPath(import.meta.url));
+const env = dotenv.config();
+
+if(env.error) {
+    console.error('Problem with parseing the env file: ' + env.error);
+    process.exit(1);
+}
 
 console.log(process.env.PORT);
 
@@ -32,21 +40,21 @@ const limiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
   max: 100 // limit each IP to 100 requests per windowMs
 });
-const logFile = __dirname + "/.log/log.log";
+const logFile =  "/home/pi/catviewerapp/.log/log.log";
 
 app.use(session({
-    secret: process.env.SECRET,
+    secret: env.parsed.SECRET,
     resave: false,
     saveUninitialized: true
   }))
 
 //TODO: email zum Funktionieren bringen (vllt. nicht notwendig)
 //TODO: magenta anhauen das sie ipv4 am router freischalten
-const privateKey  = fs.readFileSync(process.env.PRIVATE_KEY, 'utf8');
-const certificate = fs.readFileSync(process.env.CERTIFICATE, 'utf8'); 
+const privateKey  = fs.readFileSync(env.parsed.PRIVATE_KEY, 'utf8');
+const certificate = fs.readFileSync(env.parsed.CERTIFICATE, 'utf8'); 
 
 // OS ist Linux => '/' als "Pfad trenner". für OS unabhängigkeit sollte das package path verwendet werden
-const users = JSON.parse(fs.readFileSync(process.env.USERS, 'utf8'));
+const users = JSON.parse(fs.readFileSync(env.parsed.USERS, 'utf8'));
 console.log(users);
 /*var secret = speakeasy.generateSecret({
     length: 60,
@@ -92,15 +100,15 @@ const wsServer = new WebSocketServer({
     autoAcceptConnections: false
 });
 
-var connection = null;
+//var connection = null;
 
-wsServer.on('connection', async function(request) {
-    connection = request.accept('echo-protocol', request.origin);
-    fs.appendFile(logFile, `${new Date()}:' Connection accepted.`, err => {if(err) {return}});
+wsServer.on('connection', async function(ws) {
+    //connection = request.accept('echo-protocol', request.origin);
+    //fs.appendFile(logFile, `${new Date()}:' Connection accepted.`, err => {if(err) {return}});
     raspberryPiCamera.start(camConfig);
 
-      connection.on('message', async function(message) {
-        if (message.type === 'utf8') {
+    ws.on('message', async function(message) {
+        if(message.type === 'utf8') {
             try {
                 raspberryPiCamera.stop(undefined);
             } catch(err) {
@@ -128,11 +136,13 @@ raspberryPiCamera.on('frame', (frameData) => {
     console.log('length of this frameData', frameData.length);
     console.log('bytelength of buffer encoded as base64', Buffer.byteLength(frameData, 'base64'));
     console.log('like its send', frameData.toString('base64').length);
-    try {
-        connection.sendUTF(frameData.toString('base64'));
-    } catch(err) {
-        console.log(err);
-    }
+    wsServer.clients.forEach(function each(client) {
+        try {
+            client.send(frameData.toString('base64'));
+        } catch(err) {
+            console.log(err);
+        }
+    });
 });
 
 function checkAuth(req, res, next) {
@@ -148,12 +158,12 @@ app.use(express.urlencoded({extended: true}));
 
 app.get('/', (req, res) => {
     console.log('got a request');
-	res.sendFile(__dirname + "/.html/index.html");
+	res.sendFile(env.parsed.HTML_DIR + 'index.html');
 })
 
 app.get('/app', checkAuth, (req, res) => {
     //raspberryPiCamera.start(camConfig);
-    res.sendFile(__dirname + '/.html/anzeige.html')
+    res.sendFile(env.parsed.HTML_DIR + 'anzeige.html')
 })
 
 app.get('/logout', (req, res) => {
@@ -176,7 +186,7 @@ app.post("/totp", limiter, (req, res) => {
         token: req.body.totp,
         window: 1
       });
-    if (tokenValidates === true) {
+    if (tokenValidates) {
         try{
             //web.listen(3444); // TODO: eine art heartbeat der detektet ob noch wer am anderen Ende ist.
         } catch(err) {
@@ -186,7 +196,7 @@ app.post("/totp", limiter, (req, res) => {
         req.session.uid = Math.random();
         res.redirect("/app");
     } else {
-        res.redirect("/");
+        res.send({'error': 'wrong totp token'});
     }
 })
 
@@ -194,15 +204,18 @@ app.post('/login', limiter, async (req, res) => {
     const user = users.find(user => user.lname === req.body.login);
     if(!user) {
         fs.appendFile(logFile, `${new Date()}: Failed Auth from ${req.ip}\n`, err => {if(err) {return}});
-        res.status(400).send({"error": "No user found"});
+        res.status(400).send({"error": "specified user not found"});
     } else {
         try {
             if(await bcrypt.compare(req.body.pass, user.pwd)) {
                 fs.appendFile(logFile, `${new Date()}: Logged In from ${req.ip}\n`, err => {if(err) {return}});
-                //web.listen(3444); // TODO: eine art heartbeat der detektet ob noch wer am anderen Ende ist.
-                //web.keepAliveTimeout()
-                //res.redirect("/totp")
-                res.sendFile(__dirname + "/.html/totp.html");
+                if(!user.totpkey) {
+                    req.session.uid = Math.random();
+                    res.redirect("/app");
+                } else res.sendFile(env.parsed.HTML_DIR + 'totp.html');
+            } else {
+                await sleep(3000);
+                res.sendFile(env.parsed.HTML_DIR + 'fehler.html');
             }
         } catch(err) {
             res.status(500).send({"error": "Something went wrong"});
@@ -210,5 +223,18 @@ app.post('/login', limiter, async (req, res) => {
     }
 });
 
-httpServer.listen(process.env.PORT);
-httpsServer.listen(process.env.PORT_SECURE);
+httpServer.listen(env.parsed.PORT);
+httpsServer.listen(env.parsed.PORT_SECURE);
+
+/*const httpClose = promisify(httpServer.close);
+const httpsClose = promisify(httpsServer.close);*/
+
+function stopServers() {
+    console.log('here');
+    console.warn('SIGTERM was sent. Now im stoppig the server');
+    httpServer.close((err) => console.error(err));
+    httpsServer.close((err) => console.error(err));
+}
+
+process.on('SIGTERM', stopServers);
+process.on('SIGINT', stopServers);

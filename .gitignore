@@ -8,3 +8,5 @@ sqllitetry.js
 tmp/
 .env
 users.json
+generatePassword.cjs
+etwas.js

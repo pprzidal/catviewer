@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "devStart": "nodemon index.js"
+    "dev": "nodemon index.js"
   },
   "author": "pprzidal",
   "license": "ISC",
@@ -21,6 +21,7 @@
     "http": "^0.0.1-security",
     "https": "^1.0.0",
     "pi-camera-native-ts": "^0.0.9",
+    "prompt": "^1.3.0",
     "raspberry-pi-camera-native": "^0.0.0",
     "speakeasy": "^2.0.0",
     "websocket": "^1.0.34",
@@ -29,6 +30,7 @@
   },
   "devDependencies": {
     "nodemon": "^2.0.15",
+    "qrcode": "^1.5.0",
     "sqlite": "^4.0.23"
   }
 }

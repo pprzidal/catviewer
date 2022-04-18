@@ -15,14 +15,11 @@
       <a href="/logout"><button>Logout</button></a></center> <!-- TODO: place this button better -->
     <script>
       const image = document.getElementById('image');
-      const ipAndPort = location.host.split(':');
-      console.log(ipAndPort);
-      const url = `wss://${location.host}`;
-      try {
-        const connection = new WebSocket(url, "echo-protocol");
-      } catch(err) {
-        console.error(err);
-      }
+      //const ipAndPort = location.host.split(':');
+      //console.log(ipAndPort);
+      const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
+      console.log(url);
+      const connection = new WebSocket(url, "echo-protocol");
       const inputField = document.getElementById('framerate');
       const button = document.getElementById('bla');
       connection.onopen = function(event) {
@@ -30,6 +27,7 @@
       };
 
 	    connection.onmessage = function (event) {
+        console.log(event.data);
         image.src = 'data:image/jpeg;base64,'+ event.data;
       };
 
