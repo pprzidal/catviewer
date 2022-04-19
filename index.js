@@ -3,24 +3,20 @@ import * as http from 'http'; //TODO vllt. gar nicht http anbieten
 import * as https from 'https';
 import express from 'express';
 //const express = require("express");
-const app = express();
 import { WebSocketServer } from 'ws';
-//import { server as WebSocketServer } from 'websocket';
-//const WebSocketServer = server;
-//const raspberryPiCamera = require('raspberry-pi-camera-native');
 import raspberryPiCamera from 'pi-camera-native-ts';
 import helmet from 'helmet';
 import * as bcrypt from 'bcrypt';
-//const qrcode = require('qrcode');
 import {totp} from 'speakeasy';
 import rateLimit from "express-rate-limit";
 import session from 'express-session';
 import * as dotenv from 'dotenv';
-import { promisify } from 'util';
-import { dirname } from 'path';
-import { fileURLToPath } from 'url';
+import pkg from "@zino-hofmann/pi-camera-connect";
+import { Gpio } from 'onoff';
+const { StillCamera, ExposureMode, Flip, AwbMode } = pkg;
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const app = express();
 
 //const __dirname = dirname(fileURLToPath(import.meta.url));
 const env = dotenv.config();
@@ -29,6 +25,9 @@ if(env.error) {
     console.error('Problem with parseing the env file: ' + env.error);
     process.exit(1);
 }
+
+env.parsed.LED_PIN = Number.parseInt(env.parsed.LED_PIN);
+const RED_LED = new Gpio(env.parsed.LED_PIN, 'out');
 
 console.log(process.env.PORT);
 
@@ -100,12 +99,37 @@ const wsServer = new WebSocketServer({
     autoAcceptConnections: false
 });
 
+const wsToCameraMapping = {};
+
 //var connection = null;
 
 wsServer.on('connection', async function(ws) {
     //connection = request.accept('echo-protocol', request.origin);
     //fs.appendFile(logFile, `${new Date()}:' Connection accepted.`, err => {if(err) {return}});
-    raspberryPiCamera.start(camConfig);
+    //raspberryPiCamera.start(camConfig);
+    wsToCameraMapping[ws] = new StillCamera({
+        flip: Flip.Both,
+        width: 640,
+        height: 540,
+        awbMode: AwbMode.Auto,
+        exposureMode: ExposureMode.Off,
+    });
+
+    wsToCameraMapping[ws].sleep = 5000;
+    wsToCameraMapping[ws].shouldRun = true;
+
+    async function sendImages() {
+        const usedCamera = wsToCameraMapping[ws];
+        while(usedCamera.shouldRun) {
+            const buffer = await usedCamera.takeImage();
+            ws.send(buffer);
+            await sleep(usedCamera.sleep);
+        }
+    }
+
+    ws.on('close', async () => {
+        delete wsToCameraMapping[ws];
+    });
 
     ws.on('message', async function(message) {
         if(message.type === 'utf8') {
@@ -129,6 +153,10 @@ wsServer.on('connection', async function(ws) {
             }
         }
     });
+
+    await sendImages();
+
+    ws.close();
 });
 
 raspberryPiCamera.on('frame', (frameData) => {
@@ -167,35 +195,34 @@ app.get('/app', checkAuth, (req, res) => {
 })
 
 app.get('/logout', (req, res) => {
-    //raspberryPiCamera.stop();
-    //delete req.session.uid;
     req.session.destroy((err) => {
         console.log(err);
     });
-    web.close();
     res.redirect("/");
-})
+});
+
+app.post('/toggle', checkAuth, (req, res) => {
+    console.log('here');
+    RED_LED.writeSync(RED_LED.readSync() ^ 1);
+    res.status(200).send();
+});
 
 app.post("/totp", limiter, (req, res) => {
     console.log(req.body.totp);
     if(req.body.totp === undefined) res.redirect("/");
     //if(!req.session.uid) res.redirect("/");
+    const totpKey = users.find(element => element.lname === req.session.uname);
     const tokenValidates = totp.verify({
-        secret: users[0].totpkey, //TODO: super insecure. besser machen
+        secret: totpKey, //TODO: super insecure. besser machen
         encoding: 'ascii',
         token: req.body.totp,
         window: 1
       });
     if (tokenValidates) {
-        try{
-            //web.listen(3444); // TODO: eine art heartbeat der detektet ob noch wer am anderen Ende ist.
-        } catch(err) {
-            console.log(err);
-        }
-        //sessions.push();
         req.session.uid = Math.random();
         res.redirect("/app");
     } else {
+        // TODO send error page instead?
         res.send({'error': 'wrong totp token'});
     }
 })
@@ -212,7 +239,10 @@ app.post('/login', limiter, async (req, res) => {
                 if(!user.totpkey) {
                     req.session.uid = Math.random();
                     res.redirect("/app");
-                } else res.sendFile(env.parsed.HTML_DIR + 'totp.html');
+                } else {
+                    req.session.uname = req.body.login;
+                    res.sendFile(env.parsed.HTML_DIR + 'totp.html');
+                }
             } else {
                 await sleep(3000);
                 res.sendFile(env.parsed.HTML_DIR + 'fehler.html');
@@ -226,14 +256,13 @@ app.post('/login', limiter, async (req, res) => {
 httpServer.listen(env.parsed.PORT);
 httpsServer.listen(env.parsed.PORT_SECURE);
 
-/*const httpClose = promisify(httpServer.close);
-const httpsClose = promisify(httpsServer.close);*/
-
 function stopServers() {
     console.log('here');
-    console.warn('SIGTERM was sent. Now im stoppig the server');
+    console.warn('SIGTERM was sent. Now im stopping the server');
+    RED_LED.unexport();
     httpServer.close((err) => console.error(err));
     httpsServer.close((err) => console.error(err));
+    process.exit(1);
 }
 
 process.on('SIGTERM', stopServers);

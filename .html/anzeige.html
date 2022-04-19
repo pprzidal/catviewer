@@ -12,8 +12,11 @@
     <label for="framerate">Framerate</label>
       <input id="framerate" type="number">                          
       <button id="bla" onclick="sendFramerate()">Send Framerate</button><br>
+      <button onclick="toggleLed()">Toggle Led</button><br>
       <a href="/logout"><button>Logout</button></a></center> <!-- TODO: place this button better -->
     <script>
+      const ledToggleTimeout = 6000; // in ms
+      let lastTime = 0;
       const image = document.getElementById('image');
       //const ipAndPort = location.host.split(':');
       //console.log(ipAndPort);
@@ -22,13 +25,18 @@
       const connection = new WebSocket(url, "echo-protocol");
       const inputField = document.getElementById('framerate');
       const button = document.getElementById('bla');
+
+      //await new Promise()
+
       connection.onopen = function(event) {
 
       };
 
 	    connection.onmessage = function (event) {
         console.log(event.data);
-        image.src = 'data:image/jpeg;base64,'+ event.data;
+        const m8 = URL.createObjectURL(event.data);
+        image.src = m8;
+        //image.src = 'data:image/jpeg;base64,'+ event.data;
       };
 
       connection.onclose = function(event) {
@@ -49,6 +57,14 @@
       function sendFramerate() {
           const parsed = Number.parseInt(inputField.value, 10);
           if(!Number.isNaN(parsed)) connection.send(parsed);
+      }
+
+      async function toggleLed() {
+        const now = Date.now();
+        if((now - lastTime) > ledToggleTimeout) { 
+          await fetch(`${location.protocol}//${location.host}/toggle`, {method: 'POST'});
+          lastTime = now;
+        }
       }
   </script>
   </body>
