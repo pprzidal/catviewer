@@ -31,6 +31,8 @@
     "ws": "^8.5.0"
   },
   "devDependencies": {
+    "node-fetch": "^3.2.3",
+    "nodemailer": "^6.7.3",
     "nodemon": "^2.0.15",
     "qrcode": "^1.5.0",
     "sqlite": "^4.0.23"

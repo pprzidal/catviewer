@@ -4,10 +4,10 @@ import * as https from 'https';
 import express from 'express';
 //const express = require("express");
 import { WebSocketServer } from 'ws';
-import raspberryPiCamera from 'pi-camera-native-ts';
+//import raspberryPiCamera from 'pi-camera-native-ts';
 import helmet from 'helmet';
 import * as bcrypt from 'bcrypt';
-import {totp} from 'speakeasy';
+import { totp } from 'speakeasy';
 import rateLimit from "express-rate-limit";
 import session from 'express-session';
 import * as dotenv from 'dotenv';
@@ -17,8 +17,6 @@ const { StillCamera, ExposureMode, Flip, AwbMode } = pkg;
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const app = express();
-
-//const __dirname = dirname(fileURLToPath(import.meta.url));
 const env = dotenv.config();
 
 if(env.error) {
@@ -52,35 +50,7 @@ app.use(session({
 const privateKey  = fs.readFileSync(env.parsed.PRIVATE_KEY, 'utf8');
 const certificate = fs.readFileSync(env.parsed.CERTIFICATE, 'utf8'); 
 
-// OS ist Linux => '/' als "Pfad trenner". für OS unabhängigkeit sollte das package path verwendet werden
 const users = JSON.parse(fs.readFileSync(env.parsed.USERS, 'utf8'));
-console.log(users);
-/*var secret = speakeasy.generateSecret({
-    length: 60,
-    name: "CatViewerApp"
-});
-console.log(secret);
-
-qrcode.toDataURL(secret.otpauth_url, function(err, data_url) {
-    console.log(data_url);
-   
-    // Display this data URL to the user in an <img> tag
-    // Example:
-    console.log('<img src="' + data_url + '">');
-  });*/
-
-//sessions = [];
-
-const camConfig = {
-    width: 640,
-    height: 480,
-    fps: 1,
-    encoding: 'JPEG',
-    quality: 10,
-    mirror: raspberryPiCamera.Mirror.BOTH,
-  };
-
-//TODO: .png s nicht als base64 string schicken sondern als BLOB
 
 
 app.use(helmet.hidePoweredBy());
@@ -90,9 +60,6 @@ app.use(helmet.noSniff());
 const httpServer = http.createServer(app);
 const httpsServer = https.createServer({key: privateKey, cert: certificate}, app);
 
-/*httpServer.on('request', app);
-httpsServer.on('request', app);*/
-
 const wsServer = new WebSocketServer({
     //httpServer: web,
     server: httpsServer,
@@ -101,12 +68,7 @@ const wsServer = new WebSocketServer({
 
 const wsToCameraMapping = {};
 
-//var connection = null;
-
 wsServer.on('connection', async function(ws) {
-    //connection = request.accept('echo-protocol', request.origin);
-    //fs.appendFile(logFile, `${new Date()}:' Connection accepted.`, err => {if(err) {return}});
-    //raspberryPiCamera.start(camConfig);
     wsToCameraMapping[ws] = new StillCamera({
         flip: Flip.Both,
         width: 640,
@@ -117,6 +79,7 @@ wsServer.on('connection', async function(ws) {
 
     wsToCameraMapping[ws].sleep = 5000;
     wsToCameraMapping[ws].shouldRun = true;
+    wsToCameraMapping[ws].lastMessage = Date.now();
 
     async function sendImages() {
         const usedCamera = wsToCameraMapping[ws];
@@ -124,6 +87,7 @@ wsServer.on('connection', async function(ws) {
             const buffer = await usedCamera.takeImage();
             ws.send(buffer);
             await sleep(usedCamera.sleep);
+            if((Date.now() - usedCamera.lastMessage) >= env.parsed.TIMEOUT) break;
         }
     }
 
@@ -132,45 +96,12 @@ wsServer.on('connection', async function(ws) {
     });
 
     ws.on('message', async function(message) {
-        if(message.type === 'utf8') {
-            try {
-                raspberryPiCamera.stop(undefined);
-            } catch(err) {
-                fs.appendFile(logFile, err)
-            }
-            try {
-            raspberryPiCamera.start({
-                width: 640,
-                height: 480,
-                fps: Number.parseInt(message.utf8Data),
-                encoding: 'JPEG',
-                quality: 10,
-                hf: false,
-                vf: true
-              }, undefined);
-            } catch(err) {
-                fs.appendFile(logFile, err)
-            }
-        }
+        wsToCameraMapping[ws].lastMessage = Date.now();
     });
 
     await sendImages();
 
     ws.close();
-});
-
-raspberryPiCamera.on('frame', (frameData) => {
-    //console.log(typeof frameData);
-    console.log('length of this frameData', frameData.length);
-    console.log('bytelength of buffer encoded as base64', Buffer.byteLength(frameData, 'base64'));
-    console.log('like its send', frameData.toString('base64').length);
-    wsServer.clients.forEach(function each(client) {
-        try {
-            client.send(frameData.toString('base64'));
-        } catch(err) {
-            console.log(err);
-        }
-    });
 });
 
 function checkAuth(req, res, next) {
