@@ -42,11 +42,10 @@ const logFile =  "/home/pi/catviewerapp/.log/log.log";
 app.use(session({
     secret: env.parsed.SECRET,
     resave: false,
-    saveUninitialized: true
+    saveUninitialized: true,
+    cookie: {secure: true},
   }))
 
-//TODO: email zum Funktionieren bringen (vllt. nicht notwendig)
-//TODO: magenta anhauen das sie ipv4 am router freischalten
 const privateKey  = fs.readFileSync(env.parsed.PRIVATE_KEY, 'utf8');
 const certificate = fs.readFileSync(env.parsed.CERTIFICATE, 'utf8'); 
 
@@ -61,9 +60,8 @@ const httpServer = http.createServer(app);
 const httpsServer = https.createServer({key: privateKey, cert: certificate}, app);
 
 const wsServer = new WebSocketServer({
-    //httpServer: web,
     server: httpsServer,
-    autoAcceptConnections: false
+    autoAcceptConnections: false,
 });
 
 const wsToCameraMapping = {};
@@ -77,7 +75,7 @@ wsServer.on('connection', async function(ws) {
         exposureMode: ExposureMode.Off,
     });
 
-    wsToCameraMapping[ws].sleep = 5000;
+    wsToCameraMapping[ws].sleep = 1000;
     wsToCameraMapping[ws].shouldRun = true;
     wsToCameraMapping[ws].lastMessage = Date.now();
 
@@ -139,12 +137,10 @@ app.post('/toggle', checkAuth, (req, res) => {
 });
 
 app.post("/totp", limiter, (req, res) => {
-    console.log(req.body.totp);
-    if(req.body.totp === undefined) res.redirect("/");
-    //if(!req.session.uid) res.redirect("/");
-    const totpKey = users.find(element => element.lname === req.session.uname);
+    if([req.body.totp, req.session.uname].includes(undefined)) res.redirect("/");
+    const totpKey = users.find(element => element.lname === req.session.uname).totpkey;
     const tokenValidates = totp.verify({
-        secret: totpKey, //TODO: super insecure. besser machen
+        secret: totpKey,
         encoding: 'ascii',
         token: req.body.totp,
         window: 1
@@ -161,12 +157,10 @@ app.post("/totp", limiter, (req, res) => {
 app.post('/login', limiter, async (req, res) => {
     const user = users.find(user => user.lname === req.body.login);
     if(!user) {
-        fs.appendFile(logFile, `${new Date()}: Failed Auth from ${req.ip}\n`, err => {if(err) {return}});
         res.status(400).send({"error": "specified user not found"});
     } else {
         try {
             if(await bcrypt.compare(req.body.pass, user.pwd)) {
-                fs.appendFile(logFile, `${new Date()}: Logged In from ${req.ip}\n`, err => {if(err) {return}});
                 if(!user.totpkey) {
                     req.session.uid = Math.random();
                     res.redirect("/app");
