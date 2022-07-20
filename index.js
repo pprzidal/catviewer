@@ -13,6 +13,7 @@ import session from 'express-session';
 import * as dotenv from 'dotenv';
 import pkg from "@zino-hofmann/pi-camera-connect";
 import { Gpio } from 'onoff';
+import cors from 'cors';
 const { StillCamera, ExposureMode, Flip, AwbMode } = pkg;
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -38,23 +39,20 @@ const limiter = rateLimit({
   max: 100 // limit each IP to 100 requests per windowMs
 });
 const logFile =  "/home/pi/catviewerapp/.log/log.log";
+const privateKey  = fs.readFileSync(env.parsed.PRIVATE_KEY, 'utf8');
+const certificate = fs.readFileSync(env.parsed.CERTIFICATE, 'utf8'); 
+const users = JSON.parse(fs.readFileSync(env.parsed.USERS, 'utf8'));
 
 app.use(session({
-    secret: env.parsed.SECRET,
+    secret: JSON.parse(env.parsed.SECRET),
     resave: false,
     saveUninitialized: true,
     cookie: {secure: true},
-  }))
-
-const privateKey  = fs.readFileSync(env.parsed.PRIVATE_KEY, 'utf8');
-const certificate = fs.readFileSync(env.parsed.CERTIFICATE, 'utf8'); 
-
-const users = JSON.parse(fs.readFileSync(env.parsed.USERS, 'utf8'));
-
-
+  }));
 app.use(helmet.hidePoweredBy());
 app.use(helmet.xssFilter());
 app.use(helmet.noSniff());
+app.use(cors());
 
 const httpServer = http.createServer(app);
 const httpsServer = https.createServer({key: privateKey, cert: certificate}, app);
@@ -111,7 +109,7 @@ function checkAuth(req, res, next) {
     }
 }
 
-app.use(express.urlencoded({extended: true}));
+//app.use(express.urlencoded({extended: true}));
 
 app.get('/', (req, res) => {
     console.log('got a request');
@@ -125,9 +123,9 @@ app.get('/app', checkAuth, (req, res) => {
 
 app.get('/logout', (req, res) => {
     req.session.destroy((err) => {
-        console.log(err);
+        if(err) res.status(500).send({err: 'A problem occured while signing you out'});
+        res.status(200).send({txt: 'bye :)'});
     });
-    res.redirect("/");
 });
 
 app.post('/toggle', checkAuth, (req, res) => {
@@ -136,8 +134,8 @@ app.post('/toggle', checkAuth, (req, res) => {
     res.status(200).send();
 });
 
-app.post("/totp", limiter, (req, res) => {
-    if([req.body.totp, req.session.uname].includes(undefined)) res.redirect("/");
+app.post("/totp", limiter, express.json(), (req, res) => {
+    if([req.body.totp, req.session.uname].includes(undefined)) res.status(400).send({'error': 'didnt provide totp token or no login before totp'});//redirect("/");
     const totpKey = users.find(element => element.lname === req.session.uname).totpkey;
     const tokenValidates = totp.verify({
         secret: totpKey,
@@ -146,15 +144,20 @@ app.post("/totp", limiter, (req, res) => {
         window: 1
       });
     if (tokenValidates) {
-        req.session.uid = Math.random();
-        res.redirect("/app");
+        req.session.loggedIn = true;
+        // save the session before redirection to ensure page
+        // load does not happen before session is saved
+        req.session.save(function (err) {
+            if (err) res.status(500).send({});
+            else res.status(200).send({});
+        });
     } else {
         // TODO send error page instead?
-        res.send({'error': 'wrong totp token'});
+        res.status(400).send({'error': 'wrong totp token'});
     }
 })
 
-app.post('/login', limiter, async (req, res) => {
+app.post('/login', limiter, express.json(), async (req, res) => {
     const user = users.find(user => user.lname === req.body.login);
     if(!user) {
         res.status(400).send({"error": "specified user not found"});
@@ -162,15 +165,38 @@ app.post('/login', limiter, async (req, res) => {
         try {
             if(await bcrypt.compare(req.body.pass, user.pwd)) {
                 if(!user.totpkey) {
-                    req.session.uid = Math.random();
-                    res.redirect("/app");
+                    req.session.regenerate(function (err) {
+                        if (err) next(err);
+                    
+                        // store user information in session, typically a user id
+                        req.session.uname = req.body.login;
+                        req.session.loggedIn = true;
+                    
+                        // save the session before redirection to ensure page
+                        // load does not happen before session is saved
+                        req.session.save(function (err) {
+                          if (err) return next(err);
+                          res.status(200).send({'next': 'app'});
+                        })
+                    });
                 } else {
-                    req.session.uname = req.body.login;
-                    res.sendFile(env.parsed.HTML_DIR + 'totp.html');
+                    req.session.regenerate(function (err) {
+                        if (err) next(err);
+                    
+                        // store user information in session, typically a user id
+                        req.session.uname = req.body.login;
+                    
+                        // save the session before redirection to ensure page
+                        // load does not happen before session is saved
+                        req.session.save(function (err) {
+                          if (err) return next(err);
+                          res.status(200).send({'next': 'totp'});//sendFile(env.parsed.HTML_DIR + 'totp.html');
+                        })
+                    });
                 }
             } else {
                 await sleep(3000);
-                res.sendFile(env.parsed.HTML_DIR + 'fehler.html');
+                res.status(400).sendFile(env.parsed.HTML_DIR + 'fehler.html');
             }
         } catch(err) {
             res.status(500).send({"error": "Something went wrong"});
