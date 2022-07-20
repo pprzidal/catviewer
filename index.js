@@ -14,6 +14,7 @@ import * as dotenv from 'dotenv';
 import pkg from "@zino-hofmann/pi-camera-connect";
 import { Gpio } from 'onoff';
 import cors from 'cors';
+import { config } from './cam.js';
 const { StillCamera, ExposureMode, Flip, AwbMode } = pkg;
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -126,6 +127,10 @@ app.get('/logout', (req, res) => {
         if(err) res.status(500).send({err: 'A problem occured while signing you out'});
         res.status(200).send({txt: 'bye :)'});
     });
+});
+
+app.get('/camconfig', (req, res) => {
+    res.status(200).send(config);
 });
 
 app.post('/toggle', checkAuth, (req, res) => {
