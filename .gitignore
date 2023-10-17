@@ -16,3 +16,9 @@ shittyImages_2/
 shit*
 still-image*
 test.jpeg
+kc.env
+postgres.env
+dist/*
+*.png
+docker-compose.yml
+script.py
