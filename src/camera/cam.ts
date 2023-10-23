@@ -1,4 +1,40 @@
-import { StillCamera, ExposureMode, Flip, AwbMode, Rotation, StillOptions } from "@zino-hofmann/pi-camera-connect";
+import { StreamCamera, StillCamera, ExposureMode, Flip, AwbMode, Rotation, StillOptions, StreamOptions, Codec } from "@zino-hofmann/pi-camera-connect";
+import { Readable } from "stream";
+
+export class Camera {
+    private camera: StreamCamera;
+
+    constructor(camoptions?: StreamOptions) {
+        this.camera = new StreamCamera({
+            codec: Codec.MJPEG,
+            fps: 10,
+            
+        })
+    }
+
+    async stop() {
+        await this.camera.stopCapture();
+    }
+
+    async start() {
+        await this.camera.startCapture();
+    }
+
+    async takeImage(): Promise<Buffer> {
+        return this.camera.takeImage();
+    }
+
+    getStream(): Readable {
+        return this.camera.createStream();
+    }
+
+    /*takeImageRegularly(n: number, onImage: (img: Buffer) => void) {
+        setInterval(async () => {
+            const img = await this.camera.takeImage();
+            onImage(img);
+        }, n);
+    }*/
+}
 
 export const config = {
     width: {
@@ -98,5 +134,3 @@ export const config = {
         max: 10,
     }
 };
-
-//module.exports = {'config': config};
