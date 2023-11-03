@@ -1,4 +1,5 @@
 import { StreamCamera, StillCamera, ExposureMode, Flip, AwbMode, Rotation, StillOptions, StreamOptions, Codec } from "@zino-hofmann/pi-camera-connect";
+import EventEmitter from "events";
 import { Readable } from "stream";
 
 export class Camera {
@@ -7,13 +8,15 @@ export class Camera {
     constructor(camoptions?: StreamOptions) {
         this.camera = new StreamCamera({
             codec: Codec.MJPEG,
-            fps: 10,
-            
+            fps: 2,
+            width: 500,
+            height: 500,
         })
     }
 
     async stop() {
         await this.camera.stopCapture();
+        this.camera.removeAllListeners();
     }
 
     async start() {
@@ -28,12 +31,13 @@ export class Camera {
         return this.camera.createStream();
     }
 
-    /*takeImageRegularly(n: number, onImage: (img: Buffer) => void) {
-        setInterval(async () => {
-            const img = await this.camera.takeImage();
-            onImage(img);
-        }, n);
-    }*/
+    onFrame(handler: (img: Buffer) => void): void {
+        this.camera.on('frame', handler);
+    }
+
+    onError(handler: (err: any) => void): void {
+        (this.camera as EventEmitter).on('error', handler);
+    }
 }
 
 export const config = {

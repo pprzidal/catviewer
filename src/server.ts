@@ -3,9 +3,12 @@ import { WebSocketServer, createWebSocketStream, MessageEvent } from 'ws';
 import 'dotenv/config';
 import { config, Camera } from './camera/cam'
 import { Server, createServer } from 'http';
+import { checkToken } from './token/jwt';
+
+const app = express()
 
 const httpServer = createServer()
-const app = express()
+
 const wsServer = new WebSocketServer({
     perMessageDeflate: false,
     server: httpServer,
@@ -15,31 +18,64 @@ const wsServer = new WebSocketServer({
 httpServer.on("request", app);
 
 app.get('/camConfig', (_, res) => {
-    return res.status(200).send(config);
+    return res.setHeader('Cache-Control', 'max-age=3600').status(200).send(config);
 })
 
-wsServer.on('connection', (socket) => {
-    const camera = new Camera();
-    const camStream = camera.getStream();
-    let garbage: NodeJS.Timeout;
+wsServer.on('connection', async (socket) => {
+    // TODO not sure if its save to put the token into the url??
+    // TODO maybe check with tcpdump if url search Params are also encrypted when useing wss
+    //const token = (new URL(socket.url)).searchParams.get("token");
 
-    const stream = createWebSocketStream(socket)
+    // no token no stream :)
+    //if(token == null) return socket.close(1, "No token");
 
-    camStream.pipe(stream);
+    /*try {
+        await checkToken(token);
+    } catch(e) {
+        console.error(e);
+        // TODO actually token could be valid but there were problems with validateing it
+        return socket.close(1, "Invalid token");
+    }*/
+    try {
+        const camera = new Camera();
 
-    socket.on("close", () => {
-        camStream.unpipe();
-        camStream.destroy();
-        stream.end();
-        stream.destroy();
-        camera.stop();
-    })
-
-    socket.onmessage = (event: MessageEvent) => {
-        clearTimeout(garbage);
-        garbage = setTimeout(() => {
+        camera.onError((err: any) => {
+            console.error(`camera emitted error event: ${err}`);
             socket.close();
-        }, 30_000);
+        });
+
+        await camera.start();
+
+        //const camStream = camera.getStream();
+        let timeout: NodeJS.Timeout;
+
+        //const stream = createWebSocketStream(socket)
+
+        socket.on("close", () => {
+            //camStream.unpipe();
+            //camStream.destroy();
+            camera.stop();
+            //stream.end();
+            //stream.destroy();
+            //camera.stop();
+        })
+
+        //camStream.pipe(stream);
+
+        socket.onmessage = (event: MessageEvent) => {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => {
+                socket.close();
+            }, 30_000);
+            // TODO handle new config for stream
+        }
+
+        camera.onFrame((img: Buffer) => {
+            socket.send(img);
+        });
+    } catch(err) {
+        console.error(err);
+        return socket.close();
     }
 });
 
@@ -48,6 +84,6 @@ const PORT = Number.parseInt(process.env['PORT'] ?? '') ?? 3021
 /*app.listen(PORT, '127.0.0.1', () => {
     console.log(`listening on ${PORT}`)
 })*/
-httpServer.listen(PORT, "127.0.0.1", () => {
+httpServer.listen(PORT, () => {
     console.log(`listening on ${PORT}`)
 })
