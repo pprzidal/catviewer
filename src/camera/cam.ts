@@ -3,20 +3,27 @@ import EventEmitter from "events";
 import { Readable } from "stream";
 
 export class Camera {
+    private static readonly defaults: StreamOptions = {
+        codec: Codec.MJPEG,
+        fps: 2,
+        width: 500,
+        height: 500,
+    };
     private camera: StreamCamera;
 
-    constructor(camoptions?: StreamOptions) {
-        this.camera = new StreamCamera({
-            codec: Codec.MJPEG,
-            fps: 2,
-            width: 500,
-            height: 500,
-        })
+    constructor(camoptions?: StreamOptions) {  
+        const opts = {...(camoptions ?? Camera.defaults)};
+        this.camera = new StreamCamera(opts);
     }
 
     async stop() {
         await this.camera.stopCapture();
         this.camera.removeAllListeners();
+    }
+
+    async changeOpts(camoptions: StreamOptions) {
+        await this.stop();
+        this.camera = new StreamCamera(camoptions);
     }
 
     async start() {
@@ -64,14 +71,14 @@ export const config = {
     flip: {
         type: 'select',
         options: Flip,
-        default: Flip.None,
+        default: Flip.Both,
     },
-    delay: {
+    fps: {
         type: 'number',
-        default: 5,
-        min: 1,
-        max: 100,
-        unit: 'seconds',
+        default: 2,
+        min: 2,
+        max: 10,
+        unit: 'fps',
     },
     shutter: {
         type: 'number',

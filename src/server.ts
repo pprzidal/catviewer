@@ -4,8 +4,18 @@ import 'dotenv/config';
 import { config, Camera } from './camera/cam'
 import { Server, createServer } from 'http';
 import { checkToken } from './token/jwt';
+import { logger } from './logging/logging';
+import { StreamOptions } from '@zino-hofmann/pi-camera-connect';
+import cors from 'cors';
+
+const PORT = Number.parseInt(process.env.PORT ?? '') || 3021
 
 const app = express()
+
+if(process.env.DEV) {
+    logger.info('running in dev mode (allowing all Cross Origin Requests)')
+    app.use(cors())
+}
 
 const httpServer = createServer()
 
@@ -36,54 +46,52 @@ wsServer.on('connection', async (socket) => {
         // TODO actually token could be valid but there were problems with validateing it
         return socket.close(1, "Invalid token");
     }*/
+    const camera = new Camera();
+
+    camera.onError((err: any) => {
+        logger.error(`camera emitted error event: ${err}`);
+        logger.error(`now closeing socket`);
+        socket.close();
+    });
+
     try {
-        const camera = new Camera();
-
-        camera.onError((err: any) => {
-            console.error(`camera emitted error event: ${err}`);
-            socket.close();
-        });
-
         await camera.start();
 
-        //const camStream = camera.getStream();
-        let timeout: NodeJS.Timeout;
-
-        //const stream = createWebSocketStream(socket)
-
         socket.on("close", () => {
-            //camStream.unpipe();
-            //camStream.destroy();
+            logger.error(`closeing socket. stopping camera`);
             camera.stop();
-            //stream.end();
-            //stream.destroy();
-            //camera.stop();
-        })
+        });
 
-        //camStream.pipe(stream);
-
-        socket.onmessage = (event: MessageEvent) => {
-            clearTimeout(timeout);
-            timeout = setTimeout(() => {
-                socket.close();
-            }, 30_000);
-            // TODO handle new config for stream
-        }
+        camera.onError((err: any) => {
+            logger.error(`camera emitted error event: ${err}`);
+            logger.error(`now closeing socket`);
+            socket.close();
+        });
 
         camera.onFrame((img: Buffer) => {
             socket.send(img);
         });
+
+        socket.on('message', async (event: MessageEvent) => {
+            logger.info(`event ${event}`);
+            /*clearTimeout(timeout);
+            timeout = setTimeout(() => {
+                socket.close();
+            }, 30_000);*/
+            // TODO handle new config for stream
+            if(event.type === 'config') {
+                const opts = (event.data as StreamOptions);
+                console.log('changeing camera opts');
+                await camera.changeOpts(opts);
+            }
+        })
     } catch(err) {
-        console.error(err);
-        return socket.close();
+        logger.error(`Problem dureing camera startup: ${err}`);
+        await camera.stop();
+        return socket.close(1, JSON.stringify(err));
     }
 });
 
-const PORT = Number.parseInt(process.env['PORT'] ?? '') ?? 3021
-
-/*app.listen(PORT, '127.0.0.1', () => {
-    console.log(`listening on ${PORT}`)
-})*/
 httpServer.listen(PORT, () => {
-    console.log(`listening on ${PORT}`)
-})
+    logger.info(`http and ws server listening on Port ${PORT}`)
+});
