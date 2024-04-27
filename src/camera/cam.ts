@@ -57,6 +57,9 @@ export class Camera {
     }
 }
 
+type UserSettableSettings = Omit<keyof StreamOptions, "codec" | "bitRate" | "sensorMode">
+
+// TODO develop type Record<keyof StreamOptions, unknown>
 export const config = {
     width: {
         type: 'number',
@@ -153,5 +156,5 @@ export const config = {
         default: 0,
         min: -10,
         max: 10,
-    }
+    },
 };

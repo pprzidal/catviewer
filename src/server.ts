@@ -34,18 +34,21 @@ app.get('/camConfig', (_, res) => {
 wsServer.on('connection', async (socket) => {
     // TODO not sure if its save to put the token into the url??
     // TODO maybe check with tcpdump if url search Params are also encrypted when useing wss
-    //const token = (new URL(socket.url)).searchParams.get("token");
+    if(!process.env.DEV) {
+        const token = (new URL(socket.url)).searchParams.get("token");
 
-    // no token no stream :)
-    //if(token == null) return socket.close(1, "No token");
+        // no token no stream :)
+        if(token == null) return socket.close(1, "No token");
 
-    /*try {
-        await checkToken(token);
-    } catch(e) {
-        console.error(e);
-        // TODO actually token could be valid but there were problems with validateing it
-        return socket.close(1, "Invalid token");
-    }*/
+        try {
+            await checkToken(token);
+        } catch(e) {
+            console.error(e);
+            // TODO actually token could be valid but there were problems with validateing it
+            return socket.close(1, "Invalid token");
+        }
+    }
+    
     const camera = new Camera();
 
     camera.onError((err: any) => {
