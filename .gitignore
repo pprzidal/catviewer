@@ -22,3 +22,5 @@ dist/*
 *.png
 docker-compose.yml
 script.py
+dist
+img

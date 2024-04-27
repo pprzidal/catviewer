@@ -73,17 +73,12 @@ wsServer.on('connection', async (socket) => {
         });
 
         socket.on('message', async (event: MessageEvent) => {
-            logger.info(`event ${event}`);
-            /*clearTimeout(timeout);
-            timeout = setTimeout(() => {
-                socket.close();
-            }, 30_000);*/
+            logger.info(`socket message ${event}`);
+            const parsedToJSON = JSON.parse(event as unknown as string);
             // TODO handle new config for stream
-            if(event.type === 'config') {
-                const opts = (event.data as StreamOptions);
-                console.log('changeing camera opts');
-                await camera.changeOpts(opts);
-            }
+            const opts = (parsedToJSON as StreamOptions);
+            logger.info(`changeing camera opts to ${event}`);
+            await camera.changeOpts(parsedToJSON);
         })
     } catch(err) {
         logger.error(`Problem dureing camera startup: ${err}`);

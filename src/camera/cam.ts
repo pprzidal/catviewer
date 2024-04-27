@@ -3,27 +3,35 @@ import EventEmitter from "events";
 import { Readable } from "stream";
 
 export class Camera {
-    private static readonly defaults: StreamOptions = {
+    private static readonly CAM_DEFAULTS: StreamOptions = {
         codec: Codec.MJPEG,
+        flip: Flip.Both,
         fps: 2,
         width: 500,
         height: 500,
     };
     private camera: StreamCamera;
+    private onFrameHandler?: (img: Buffer) => void;
+    private onErrorHandler?: (err: any) => void;
 
     constructor(camoptions?: StreamOptions) {  
-        const opts = {...(camoptions ?? Camera.defaults)};
+        const opts = {...(camoptions ?? Camera.CAM_DEFAULTS)};
         this.camera = new StreamCamera(opts);
     }
 
-    async stop() {
+    async stop(remListeners = true) {
         await this.camera.stopCapture();
-        this.camera.removeAllListeners();
+        if(remListeners) this.camera.removeAllListeners();
     }
 
     async changeOpts(camoptions: StreamOptions) {
-        await this.stop();
-        this.camera = new StreamCamera(camoptions);
+        await this.stop(true);
+        const opts = {...Camera.CAM_DEFAULTS, ...camoptions};
+        console.log('useing opts ', opts);
+        this.camera = new StreamCamera(opts);
+        if(this.onFrameHandler) this.camera.on('frame', this.onFrameHandler);
+        if(this.onErrorHandler) (this.camera as EventEmitter).on('error', this.onErrorHandler);
+        await this.start();
     }
 
     async start() {
@@ -39,10 +47,12 @@ export class Camera {
     }
 
     onFrame(handler: (img: Buffer) => void): void {
+        this.onFrameHandler = handler;
         this.camera.on('frame', handler);
     }
 
     onError(handler: (err: any) => void): void {
+        this.onErrorHandler = handler;
         (this.camera as EventEmitter).on('error', handler);
     }
 }
